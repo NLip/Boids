@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>
+BOIDS!!!
+</title>
+<script>
+function Interaction(canvas, playPauseButton) {
+	this.canvas = canvas;
+	this.context = canvas.getContext("2d");
+	this.playPauseButton = playPauseButton;
+	this.intervalID = null;
+	this.simulation = null;
+}
+Interaction.prototype.newBoids = function() {
+	var that = this;
+	this.stop();
+	this.simulation = new Simulation(20);
+	this.placeBoids();
+	this.playPauseButton.innerHTML = "GO!!!";
+	this.playPauseButton.style.display = "";
+};
+
+Interaction.prototype.playPause = function() {
+	if(this.intervalID !== null) {
+		this.stop();
+		this.playPauseButton.innerHTML = "RESUME!!!";
+	}
+	else {
+		this.start();
+		this.playPauseButton.innerHTML = "STAAAAHP!!!";
+	}
+}
+
+Interaction.prototype.start = function() {
+	var that = this;
+	this.placeBoids();	
+	
+	if (this.intervalID === null) {
+		this.intervalID = setInterval(function() {
+			that.simulation.advance();
+			that.placeBoids();
+		},100);
+	}	
+};
+
+Interaction.prototype.stop = function() {
+	clearInterval(this.intervalID);
+	this.intervalID = null;
+};
+
+
+Interaction.prototype.placeBoids = function() {
+	var i, boids = this.simulation.boids;
+	this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+	for (i = 0; i < boids.length; ++i) {
+		this.placeBoid(boids[i]);
+	}
+};
+
+
+Interaction.prototype.placeBoid = function(boid) {
+	this.placeImage(boid.image, boid.position, boid.getAngle());
+};
+
+Interaction.prototype.placeImage = function(image,pos,angle) {
+    // From http://creativejs.com/2012/01/day-10-drawing-rotated-images-into-canvas/
+	
+  	// save the current co-ordinate system 
+	// before we screw with it
+	this.context.save(); 
+ 
+	// move to the middle of where we want to draw our image
+	this.context.translate(pos.x, pos.y);
+ 
+	// rotate around that point
+	this.context.rotate(angle);
+ 
+	// draw it up and to the left by half the width
+	// and height of the image 
+	this.context.drawImage(image, -(image.width/2), -(image.height/2));
+ 
+	// and restore the co-ords to how they were when we began
+	this.context.restore(); 
+};
+</script>
+
+<script>
+function Simulation(n, options) {
+	var i;
+	
+	options = options || {};
+	this.averageVelocityFactor = options.averageVelocityFactor || 8;
+	this.centerOfMassFactor = options.centerOfMassFactor || 100;
+	this.optimalDistance = options.optimalDistance || 35;
+	this.maxSpeed = options.maxSpeed || 15;
+	this.boundForce = options.boundForce || 10;
+	this.boundBox = options.boundBox || {};
+	this.boundBox.xMin = this.boundBox.xMin || 10;
+	this.boundBox.xMax = this.boundBox.xMax || 1190;
+	this.boundBox.yMin = this.boundBox.yMin || 10;
+	this.boundBox.yMax = this.boundBox.yMax || 590;
+	
+	
+	this.boids = [];
+	for (i = 0; i < n; ++i) {
+		this.boids[i] = new Boid();
+	}
+	
+	this.centerOfMass = null;
+	this.averageVelocity = null;
+}
+
+Simulation.prototype.advance = function() {
+	var b, r;
+	var update, result;
+	var currentBoid;
+
+	this.centerOfMass = null;
+	this.averageVelocity = null;
+	for(b = 0; b < this.boids.length; ++b) {
+		currentBoid = this.boids[b];
+
+		currentBoid.velocity.addTo(this.rules(currentBoid));
+		this.limitSpeed(currentBoid);
+		 
+		currentBoid.position.addTo(currentBoid.velocity);
+	}
+};
+
+Simulation.prototype.rules = function(boid) {
+
+	// Rule 1
+	var i;
+	var pcj, result;
+	var v = new Coordinate (0,0);
+
+	if(this.centerOfMass === null) {
+		this.centerOfMass = new Coordinate(0,0);
+		for (i = 0; i < this.boids.length; ++i) {		
+			this.centerOfMass.addTo(this.boids[i].position);
+		}
+	}
+	pcj = this.centerOfMass.minus(boid.position).divide(this.boids.length - 1);
+	result = pcj.minus(boid.position).divide(this.centerOfMassFactor);
+	
+	
+	// Rule 2
+	for (i = 0; i < this.boids.length; ++i) {
+		if (this.boids[i] !== boid) {
+			if (this.boids[i].position.minus(boid.position).norm() < this.optimalDistance) {
+				v.subtractFrom(this.boids[i].position.minus(boid.position));
+			}
+		}
+	}
+	result.addTo(v);
+
+
+	// Rule 3
+	if(this.averageVelocity === null) {
+		this.averageVelocity = new Coordinate(0,0);
+		for (i = 0; i < this.boids.length; ++i) {		
+			this.averageVelocity.addTo(this.boids[i].velocity);
+			this.averageVelocity.divide(this.boids.length - 1);
+		}
+	}
+	result.addTo(this.averageVelocity.minus(boid.velocity).divide(this.averageVelocityFactor));
+
+	// Bounding Forces
+	v = new Coordinate (0,0);
+	if (boid.position.x < this.boundBox.xMin) {
+		v.x = this.boundForce;
+	}
+	else if (boid.position.x > this.boundBox.xMax) {
+		v.x = -this.boundForce;
+	}
+	if (boid.position.y < this.boundBox.yMin) {
+		v.y = this.boundForce;
+	}
+	else if (boid.position.y > this.boundBox.yMax) {
+		v.y = -this.boundForce;
+	}
+	result.addTo(v);
+	
+	return result;
+};
+
+Simulation.prototype.limitSpeed = function(boid) {
+	if (boid.velocity.norm() > this.maxSpeed) {
+		boid.velocity = boid.velocity.divide(boid.velocity.norm()).multiply(this.maxSpeed);
+		return true;
+	}
+	return false;
+};
+
+</script>
+
+<script>
+function Boid(options) {
+	options = options || {};
+	
+	this.velocity = new Coordinate(2*Math.random()-1,2*Math.random()-1);
+	this.position = new Coordinate(400*Math.random()+100, 400*Math.random()+100);
+	this.image = options.image || document.getElementById("boid");
+}
+
+Boid.prototype.getAngle = function() {
+	return this.velocity.angle();
+};
+
+</script>
+
+<script>
+function Coordinate(x,y) {
+	this.x = x;
+	this.y = y;
+}
+
+Coordinate.prototype.addTo = function(otherCoordinate) {
+	this.x += otherCoordinate.x;
+	this.y += otherCoordinate.y;	
+	return this;
+};
+
+Coordinate.prototype.subtractFrom = function(otherCoordinate) {
+	this.x -= otherCoordinate.x;
+	this.y -= otherCoordinate.y;	
+	return this;
+};
+
+Coordinate.prototype.norm = function() {
+	return Math.sqrt(this.x*this.x + this.y*this.y);
+};
+
+Coordinate.prototype.minus = function(b) {
+	var result = new Coordinate();
+	result.x = this.x -b.x;
+	result.y = this.y -b.y;
+	return result;
+};
+
+Coordinate.prototype.divide = function(n) {
+	var result = new Coordinate();
+	result.x = this.x/n;
+	result.y = this.y/n;
+	return result;
+};
+
+Coordinate.prototype.multiply = function(n) {
+	var result = new Coordinate();
+	result.x = this.x * n;
+	result.y = this.y * n;
+	return result;
+}
+
+Coordinate.prototype.angle = function() {
+	var arc = Math.acos(-this.divide(this.norm()).y);
+	if (this.x > 0) {
+		return arc;
+	}
+	return -arc;
+};
+</script>
+<script>
+var interaction;
+window.onload = function() {
+	interaction = new Interaction(document.getElementById("canvas"), document.getElementById("playPause"));
+};
+</script> 
+<style>
+button {
+    font-family: Verdana;
+    font-size: 15px;
+    text-align: center;
+    border: 1px solid #000000;
+    color: #FFFFFF;
+    background-color: #0000FF;
+}
+h1 {
+	font-family: Verdana;
+}
+</style>
+</head>
+
+<body>
+<h1> LET THEM FLY :) </h1>
+<img id="boid" src="boid.png" style="display:none;">
+
+<canvas id="canvas" width="1200" height="600" style="border:1px solid #000000;">
+Please make sure to use a browser that supports the canvas tag (HTML 5).
+</canvas>
+
+</br>
+<button type="button" onclick="interaction.newBoids()">NEW BOIDS!!!</button>
+<button id="playPause" type="button" onclick="interaction.playPause()" style="display:none;">GO!!!</button> 
+
+</body>
+</html>
