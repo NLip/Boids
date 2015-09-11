@@ -17,7 +17,20 @@ function Interaction(canvas, playPauseButton, foodButton, predatorButton, slider
 	this.sliders = {};
 	this.intervalID = null;
 	this.simulation = null;
-	this.slidersDivInnerHTML = this.slidersDiv.innerHTML;
+	
+	this.undo = {
+		playPauseButton: {style: {}},
+		foodButton: {style: {}},
+		predatorButton: {style: {}},
+		slidersDiv: {style: {}}
+	};
+	
+	this.undo.playPauseButton.innerHTML = this.playPauseButton.innerHTML;
+	this.undo.playPauseButton.style.display = this.playPauseButton.style.display;
+	this.undo.foodButton.style.display = this.playPauseButton.style.display;
+	this.undo.predatorButton.style.display = this.playPauseButton.style.display;
+	this.undo.slidersDiv.style.display = this.playPauseButton.style.display;
+	this.undo.slidersDiv.innerHTML = this.slidersDiv.innerHTML;
 	
 	// Initialize sliders
 	for (property in globals.defaults.simulation) {
@@ -70,7 +83,7 @@ Interaction.prototype.appendSlider = function(preset, callback) {
 	range.type = "range";
 	range.value = preset.value;
 	range.min = -10;
-	range.max = 200;
+	range.max = 100;
 	range.onchange = callback;
 	
 	div.appendChild(range);
@@ -204,14 +217,17 @@ Interaction.prototype.placeImage = function(image,pos,angle) {
 };
 
 Interaction.prototype.delete = function() {
-	this.slidersDiv.innerHTML = this.slidersDivInnerHTML;
+	this.stop();
 	
-	// Maybe not what was there initially. FIX
-	this.playPauseButton.innerHTML = "GO!!!";
-	this.playPauseButton.style.display = "none";
-	this.foodButton.style.display = "none";
-	this.predatorButton.style.display = "none";
-	this.slidersDiv.style.display = "none";
+	// Undo changes to the document.
+	this.playPauseButton.innerHTML = this.undo.playPauseButton.innerHTML;
+	this.playPauseButton.style.display = this.undo.playPauseButton.style.display;
+	this.foodButton.style.display = this.undo.foodButton.style.display;
+	this.predatorButton.style.display = this.undo.predatorButton.style.display;
+	this.slidersDiv.style.display = this.undo.slidersDiv.style.display;
+	this.slidersDiv.innerHTML = this.undo.slidersDiv.innerHTML;
+	
+	// Clear canvas
 	this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);	
 }
 
