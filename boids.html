@@ -5,25 +5,97 @@
 BOIDS!!!
 </title>
 <script>
-function Interaction(canvas, playPauseButton, foodButton, predatorButton) {
+function Interaction(canvas, playPauseButton, foodButton, predatorButton, slidersDiv) {
+	var that = this;
+	
 	this.canvas = canvas;
 	this.context = canvas.getContext("2d");
 	this.playPauseButton = playPauseButton;
 	this.foodButton = foodButton;
 	this.predatorButton = predatorButton;
+	this.slidersDiv = slidersDiv;
+	this.sliders = {};
 	this.intervalID = null;
 	this.simulation = null;
-}
+	this.slidersDivInnerHTML = this.slidersDiv.innerHTML;
+	
+	// Initialize sliders
+	for (property in globals.defaults.simulation) {
+		if (globals.defaults.simulation.hasOwnProperty(property)) {
+			this.sliders[property] = this.appendSlider(
+				globals.defaults.simulation[property],
+				function(name) {
+					return function() { 
+						that.simulation[name] = this.value;
+						this.parentElement.getElementsByTagName("span")[0].innerHTML = this.value;
+					}
+				}(property)
+			);			
+		}
+	}
+	
+	// Prey slider
+	this.sliders.preyMaxSpeed = this.appendSlider(
+		globals.defaults.boid.preyMaxSpeed,
+		function() {
+			var i;
+			for (i = 0; i < that.simulation.boids.length; ++i) {
+				that.simulation.boids[i].maxSpeed = this.value;
+			}
+			this.parentElement.getElementsByTagName("span")[0].innerHTML = this.value;
+		}
+	);
+		
+	// Predator slider
+	this.sliders.predatorMaxSpeed = this.appendSlider(
+		globals.defaults.boid.predatorMaxSpeed,
+		function() {
+			if (that.simulation.predator !== null) {
+				that.simulation.predator.maxSpeed = this.value;
+			}
+			this.parentElement.getElementsByTagName("span")[0].innerHTML = this.value;
+		}
+	);
+	
+}	
+
+Interaction.prototype.appendSlider = function(preset, callback) {
+	div = document.createElement("div");
+	
+	title = document.createElement("p");
+	title.innerHTML = preset.description;
+	div.appendChild(title);
+	
+	range = document.createElement("input");
+	range.type = "range";
+	range.value = preset.value;
+	range.min = -10;
+	range.max = 200;
+	range.onchange = callback;
+	
+	div.appendChild(range);
+	
+	span = document.createElement("span");
+	span.innerHTML = preset.value;
+	div.appendChild(span);
+	
+	this.slidersDiv.appendChild(div);
+	
+	return range;
+};
+
 Interaction.prototype.newBoids = function() {
 	var that = this;
-	var amountOfBoids = 5;
+	var amountOfBoids = 10;
 	this.stop();
-	this.simulation = new Simulation(amountOfBoids);
+	this.simulation = new Simulation(amountOfBoids);	
+	
 	this.drawSimulation();
 	this.playPauseButton.innerHTML = "GO!!!";
 	this.playPauseButton.style.display = "";
 	this.foodButton.style.display = "";
 	this.predatorButton.style.display = "";
+	this.slidersDiv.style.display = "";
 };
 
 Interaction.prototype.playPause = function() {
@@ -58,6 +130,10 @@ Interaction.prototype.stop = function() {
 Interaction.prototype.drawSimulation = function() {
 	var i, boids = this.simulation.boids;
 	this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+	
+	if (this.simulation.bones.positions.length !== 0) {
+		this.placeBones(this.simulation.bones);
+	}
 	for (i = 0; i < boids.length; ++i) {
 		this.placeBoid(boids[i]);
 	}
@@ -85,11 +161,18 @@ Interaction.prototype.placeFood = function(food) {
 	this.placeImage(food.getImage(), food.position, 0);
 };
 
+Interaction.prototype.placeBones = function(bones) {
+	var i;
+	for (i = 0; i < bones.positions.length; ++i) {
+		this.placeImage(bones.image, bones.positions[i], 0);	
+	}
+};
+
 Interaction.prototype.newPredator = function() {
 	if (this.simulation.predator === null) {
 		this.simulation.predator = new Boid({
 			image: document.getElementById("predator"),
-			maxSpeed: 20
+			maxSpeed: this.sliders.predatorMaxSpeed.value || globals.defaults.boid.predatorMaxSpeed.value
 		});
 		this.placeBoid(this.simulation.predator);
 	}
@@ -119,6 +202,19 @@ Interaction.prototype.placeImage = function(image,pos,angle) {
 	// and restore the co-ords to how they were when we began
 	this.context.restore(); 
 };
+
+Interaction.prototype.delete = function() {
+	this.slidersDiv.innerHTML = this.slidersDivInnerHTML;
+	
+	// Maybe not what was there initially. FIX
+	this.playPauseButton.innerHTML = "GO!!!";
+	this.playPauseButton.style.display = "none";
+	this.foodButton.style.display = "none";
+	this.predatorButton.style.display = "none";
+	this.slidersDiv.style.display = "none";
+	this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);	
+}
+
 </script>
 
 <script>
@@ -126,20 +222,21 @@ function Simulation(n, options) {
 	var i;
 	
 	options = options || {};
-	this.averageVelocityFactor = options.averageVelocityFactor || 16;
-	this.centerOfMassFactor = options.centerOfMassFactor || 45;
-	this.optimalDistance = options.optimalDistance || 35;
-	this.boundForce = options.boundForce || 10;
+	this.averageVelocityFactor = options.averageVelocityFactor || globals.defaults.simulation.averageVelocityFactor.value;
+	this.centerOfMassFactor = options.centerOfMassFactor || globals.defaults.simulation.centerOfMassFactor.value;
+	this.optimalDistance = options.optimalDistance || globals.defaults.simulation.optimalDistance.value;
+	this.boundForce = options.boundForce || globals.defaults.simulation.boundForce.value;
 	this.boundBox = options.boundBox || {};
-	this.boundBox.xMin = this.boundBox.xMin || 10;
-	this.boundBox.xMax = this.boundBox.xMax || 1190;
-	this.boundBox.yMin = this.boundBox.yMin || 10;
-	this.boundBox.yMax = this.boundBox.yMax || 590;
-	this.foodFactor = options.foodFactor || 10;
+	this.boundBox.xMin = this.boundBox.xMin || 30;
+	this.boundBox.xMax = this.boundBox.xMax || 1170;
+	this.boundBox.yMin = this.boundBox.yMin || 30;
+	this.boundBox.yMax = this.boundBox.yMax || 570;
+	this.foodFactor = options.foodFactor || globals.defaults.simulation.foodFactor.value;
 	this.foodSize = options.foodSize || 10;
-	this.predatorFactor = options.predatorFactor || 30;
-	this.predatorRadius = options.predatorRadius || 150;
-	this.predatorAttraction = options.predatorAttraction || 20;
+	this.predatorFactor = options.predatorFactor || globals.defaults.simulation.predatorFactor.value;
+	this.predatorRadius = options.predatorRadius || globals.defaults.simulation.predatorRadius.value;
+	this.predatorAttraction = options.predatorAttraction || globals.defaults.simulation.predatorAttraction.value;
+	this.boidSize = options.boidSize || 10;
 	
 	this.boids = [];
 
@@ -172,6 +269,11 @@ function Simulation(n, options) {
 	};
 
 	this.predator = null;
+	
+	this.bones = {
+		positions: [],
+		image: document.getElementById("bones")
+	};
 }	
 
 Simulation.prototype.advance = function() {
@@ -198,47 +300,57 @@ Simulation.prototype.advance = function() {
 	if (this.predator !== null) {
 		this.movePredator();
 	}
+	
+	if (this.predator !== null) {
+		for (i = 0; i < this.boids.length; ++i) {
+			if (this.predator.position.minus(this.boids[i].position).norm() < this.boidSize) {
+				this.bones.positions.push(this.boids[i].position);
+				this.boids.splice(i, 1);
+			}
+		}
+	}
 };
 	
 Simulation.prototype.rules = function(boid) {
 
 	// Rule 1
 	var i;
-	var pcj, result;
+	var pcj, result = new Coordinate(0,0);
 	var v = new Coordinate(0,0);
 	var z; 
-	
-	if(this.centerOfMass === null) {
-		this.centerOfMass = new Coordinate(0,0);
-		for (i = 0; i < this.boids.length; ++i) {		
-			this.centerOfMass.addTo(this.boids[i].position);
-		}
-	}
-	pcj = this.centerOfMass.minus(boid.position).divide(this.boids.length - 1);
-	result = pcj.minus(boid.position).divide(this.centerOfMassFactor);
-	
-	
-	// Rule 2
-	for (i = 0; i < this.boids.length; ++i) {
-		if (this.boids[i] !== boid) {
-			if (this.boids[i].position.minus(boid.position).norm() < this.optimalDistance) {
-				v.subtractFrom(this.boids[i].position.minus(boid.position));
+	if (this.boids.length > 1) {
+		if(this.centerOfMass === null) {
+			this.centerOfMass = new Coordinate(0,0);
+			for (i = 0; i < this.boids.length; ++i) {		
+				this.centerOfMass.addTo(this.boids[i].position);
 			}
 		}
-	}
-	result.addTo(v);
-
-
-	// Rule 3
-	if(this.averageVelocity === null) {
-		this.averageVelocity = new Coordinate(0,0);
-		for (i = 0; i < this.boids.length; ++i) {		
-			this.averageVelocity.addTo(this.boids[i].velocity);
-			this.averageVelocity.divide(this.boids.length - 1);
+		pcj = this.centerOfMass.minus(boid.position).divide(this.boids.length - 1);
+		result.addTo(pcj.minus(boid.position).divide(100).multiply(this.centerOfMassFactor));
+		
+		
+		// Rule 2
+		for (i = 0; i < this.boids.length; ++i) {
+			if (this.boids[i] !== boid) {
+				if (this.boids[i].position.minus(boid.position).norm() < this.optimalDistance) {
+					v.subtractFrom(this.boids[i].position.minus(boid.position));
+				}
+			}
 		}
-	}
-	result.addTo(this.averageVelocity.minus(boid.velocity).divide(this.averageVelocityFactor));
+		result.addTo(v);
 
+
+		// Rule 3
+		if(this.averageVelocity === null) {
+			this.averageVelocity = new Coordinate(0,0);
+			for (i = 0; i < this.boids.length; ++i) {		
+				this.averageVelocity.addTo(this.boids[i].velocity);
+				this.averageVelocity.divide(this.boids.length - 1);
+			}
+		}
+		result.addTo(this.averageVelocity.minus(boid.velocity).divide(100).multiply(this.averageVelocityFactor));
+	}
+	
 	// Bounding Forces
 	v = new Coordinate(0,0);
 	if (boid.position.x < this.boundBox.xMin) {
@@ -289,6 +401,8 @@ Simulation.prototype.movePredator = function() {
 };
 
 Simulation.prototype.predatorRules = function() {
+
+	// Boid Hunt
 	var i, m = Infinity, index, dist, v;
 	for (i = 0; i < this.boids.length; ++i) {
 		dist = this.boids[i].position.minus(this.predator.position).norm();
@@ -327,7 +441,7 @@ function Boid(options) {
 	this.velocity = options.velocity || new Coordinate(2*Math.random()-1,2*Math.random()-1);
 	this.position = options.position || new Coordinate(1000*Math.random()+100, 400*Math.random()+100);
 	this.image = options.image || document.getElementById("boid");
-	this.maxSpeed = options.maxSpeed || 15;
+	this.maxSpeed = options.maxSpeed || globals.defaults.boid.preyMaxSpeed.value;
 
 }
 
@@ -389,15 +503,46 @@ Coordinate.prototype.angle = function() {
 };
 </script>
 <script>
-var interaction;
-window.onload = function() {
-	interaction = new Interaction(
+var globals = {};
+
+
+globals.defaults = {};
+globals.defaults.simulation = {
+	averageVelocityFactor: {value: 16, description: "adjusting to velocity of all other boids"},
+	centerOfMassFactor: {value: 15, description: "center of mass attraction"},
+	optimalDistance:  {value: 35, description: "optimal distance between the boids"},
+	boundForce:  {value: 15, description: "repelling force of the boundaries"},
+	foodFactor: {value: 10, description: "alluring force of the food (boids' perspective)"},
+	predatorFactor: {value: 30, description: "boids' ability to elude"},
+	predatorRadius: {value: 150, description: "radius of predator's repelling force"},
+	predatorAttraction: {value: 20, description: "predator's ability to stay on boid's tail"},
+};
+
+globals.defaults.boid = {
+	preyMaxSpeed: {value: 15, description: "maximum prey speed"},
+	predatorMaxSpeed: {value: 45, description: "maximum predator speed"}
+};
+
+
+globals.reset = function() {
+	if (this.interaction) {
+		this.interaction.delete();
+	}
+	this.interaction = new Interaction(
 		document.getElementById("canvas"),
 		document.getElementById("playPause"),
 		document.getElementById("foodButton"),
-		document.getElementById("predatorButton")
-		);
+		document.getElementById("predatorButton"),
+		document.getElementById("sliders")
+	);
+	
+	
+};	
+
+window.onload = function() {
+	globals.reset();
 };
+
 </script> 
 <style>
 button {
@@ -421,16 +566,31 @@ h1 {
 <img id="food2" src="food2.png" style="display:none;">
 <img id="food1" src="food1.png" style="display:none;">
 <img id="predator" src="predator.png" style="display:none;">
+<img id="bones" src="bones.png" style="display:none;">
 
-<canvas id="canvas" width="1200" height="600" style="border:1px solid #000000;">
-Please make sure to use a browser that supports the canvas tag (HTML 5).
-</canvas>
+<table>
+	<tr>
+		<td>
+			<canvas id="canvas" width="1200" height="800" style="border:1px solid #000000;">
+			Please make sure to use a browser that supports the canvas tag (HTML 5).
+			</canvas>
+		</td>
+		<td>
+			<div id="sliders" style="display:none;"></div>
+		<td>
+	</tr>
+</table>
 
 </br>
-<button type="button" onclick="interaction.newBoids()">NEW BOIDS!!!</button>
-<button id="playPause" type="button" onclick="interaction.playPause()" style="display:none;">GO!!!</button> 
-<button id="foodButton" type="button" onclick="interaction.newFood()" style="display:none;">FOOD!!!</button>
-<button id="predatorButton" type="button" onclick="interaction.newPredator()" style="display:none;">DANGER!!!</button> 
+<button type="button" onclick="globals.interaction.newBoids()">NEW BOIDS!!!</button>
+<button id="playPause" type="button" onclick="globals.interaction.playPause()" style="display:none;">GO!!!</button> 
+<button id="foodButton" type="button" onclick="globals.interaction.newFood()" style="display:none;">FOOD!!!</button>
+<button id="predatorButton" type="button" onclick="globals.interaction.newPredator()" style="display:none;">DANGER!!!</button> 
+<button id="resetButton" type="button" onclick="globals.reset()">RESET!!!</button> 
+
+
+<br>
+
 
 </body>
 </html>
